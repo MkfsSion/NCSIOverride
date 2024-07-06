@@ -2,7 +2,7 @@
 /* provided different definition of SHIM() macro.*/
 
 SHIM(ServiceMain)
-SHIM(SvchostPushServiceGlobals)
+SHIM(SvchostPushServiceGlobalsEx)
 
 #ifdef SHIM_DECLARE
 /* included in global scope */
@@ -10,8 +10,8 @@ SHIM(SvchostPushServiceGlobals)
 #include "fuckncsi.h"
 static HMODULE LoadTargetLibrary() {
     wchar_t *dllPath = (wchar_t*)HeapAlloc(GetProcessHeap(), 0, 65536);
-    if (GetSystemDirectoryW(dllPath, 32768) != 0) {
-        lstrcatW(dllPath, L"\\NlaSvc.dll");
+    if (dllPath && (GetSystemDirectoryW(dllPath, 32768) != 0)) {
+        lstrcatW(dllPath, L"\\netprofmsvc.dll");
         HMODULE hDll = LoadLibraryW(dllPath);
         HeapFree(GetProcessHeap(), 0, dllPath);
         return hDll;

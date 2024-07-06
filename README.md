@@ -24,7 +24,7 @@ Download from [Releases](https://github.com/dantmnf/NCSIOverride/releases) or Gi
 
 ## Configuration
 
-Configuartion is stored in `HKLM\SYSTEM\CurrentControlSet\Services\NlaSvc\Parameters\Internet\NCSIOverride`, see install.reg for example
+Configuartion is stored in `HKLM\SYSTEM\CurrentControlSet\Services\netprofm\Parameters\Internet\NCSIOverride`, see install.reg for example
 
     NCSIOverride
     | # set default override for all interfaces here

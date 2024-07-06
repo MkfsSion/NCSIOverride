@@ -1,4 +1,5 @@
 
+#include <fstream>
 #include <string>
 #include <string_view>
 #include <optional>
@@ -14,13 +15,26 @@
 
 using namespace std::literals;
 
+//static std::wofstream* flog = nullptr;
+
 BOOL WINAPI DllMain(HINSTANCE hMod, DWORD fdwReason, LPVOID lpvReserved) {
     if (DetourIsHelperProcess()) return TRUE;
     switch (fdwReason) {
     case DLL_PROCESS_ATTACH:
     case DLL_THREAD_ATTACH:
     case DLL_THREAD_DETACH:
+        break;
     case DLL_PROCESS_DETACH:
+    {
+        //if (flog) {
+        //    std::flush(*flog);
+        //    flog->flush();
+        //    flog->close();
+        //    delete flog;
+        //    flog = nullptr;
+        //    break;
+        //}
+    }
         break;
     }
     return TRUE;
@@ -35,7 +49,7 @@ BOOL WINAPI DllMain(HINSTANCE hMod, DWORD fdwReason, LPVOID lpvReserved) {
 
 static std::optional<uintptr_t> GetSymbolOffset(std::string_view name) {
     HKEY hk;
-    auto ls = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services\\NlaSvc\\Parameters\\Internet\\NCSIOverride\\Offsets", 0, KEY_READ, &hk);
+    auto ls = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services\\netprofm\\Parameters\\Internet\\NCSIOverride\\Offsets", 0, KEY_READ, &hk);
     if (ls != 0) return {};
     DWORD type;
     uintptr_t offset;
@@ -47,7 +61,9 @@ static std::optional<uintptr_t> GetSymbolOffset(std::string_view name) {
     return offset;
 }
 
-static constexpr auto NCSI_INTERFACE_ATTRIBUTES_SetCapability = "?SetCapability@NCSI_INTERFACE_ATTRIBUTES@@AEAAXW4_NLA_CONNECTIVITY_FAMILY@@W4_CONNECTIVITY_CAPABILITY@@W4_NLA_CAPABILITY_CHANGE_REASON@@@Z"sv;
+static constexpr auto NCSI_INTERFACE_ATTRIBUTES_SetCapability = "?SetCapability@NCSI_INTERFACE_ATTRIBUTES@@QEAAXW4_NLA_CONNECTIVITY_FAMILY@@W4_CONNECTIVITY_CAPABILITY@@W4_NLA_CAPABILITY_CHANGE_REASON@@@Z"sv;
+
+//static constexpr auto NCSI_INTERFACE_ATTRIBUTES_SetCapability = "?SetCapability@NCSI_INTERFACE_ATTRIBUTES@@AEAAXW4_NLA_CONNECTIVITY_FAMILY@@W4_CONNECTIVITY_CAPABILITY@@W4_NLA_CAPABILITY_CHANGE_REASON@@@Z"sv;
 
 static std::optional<void*> GetSymbolAddress(HMODULE base, std::string_view name) {
     auto offset = GetSymbolOffset(NCSI_INTERFACE_ATTRIBUTES_SetCapability);
@@ -81,7 +97,7 @@ static decltype(MySetCapability) *realSetCapability;
 
 static std::optional<int> GetDefaultCapabilityOverride(int family) {
     HKEY hk;
-    auto ls = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services\\NlaSvc\\Parameters\\Internet\\NCSIOverride", 0, KEY_READ, &hk);
+    auto ls = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services\\netprofm\\Parameters\\Internet\\NCSIOverride", 0, KEY_READ, &hk);
     if (ls != 0) {
         return {};
     }
@@ -98,7 +114,7 @@ static std::optional<int> GetDefaultCapabilityOverride(int family) {
 
 static std::optional<int> GetCapabilityForInterface(const GUID& interfaceGuid, int family) {
     wchar_t subkey[256];
-    StringCchPrintfW(subkey, 256, L"SYSTEM\\CurrentControlSet\\Services\\NlaSvc\\Parameters\\Internet\\NCSIOverride\\InterfaceOverride\\" FORMAT_GUID, GUID_ARG(interfaceGuid));
+    StringCchPrintfW(subkey, 256, L"SYSTEM\\CurrentControlSet\\Services\\netprofm\\Parameters\\Internet\\NCSIOverride\\InterfaceOverride\\" FORMAT_GUID, GUID_ARG(interfaceGuid));
     HKEY hk;
     auto ls = RegOpenKeyExW(HKEY_LOCAL_MACHINE, subkey, 0, KEY_READ, &hk);
     if (ls != 0) {
@@ -124,23 +140,33 @@ static std::optional<int> GetResultantCapabilityOverride(const GUID &interfaceGu
 }
 
 static void MySetCapability(NCSI_INTERFACE_ATTRIBUTES *attributes, int family, int cap, int reason) {
+    //*flog << "On my MySetCapability" << std::endl;
+    //std::flush(*flog);
     char buf[256];
     auto ifguid = GetInterfaceGUID(attributes);
     auto origcap = cap;
     auto optcap = GetResultantCapabilityOverride(ifguid, family);
     if (optcap)
     {
+        //*flog << "Set replaced cap:" << *optcap << std::endl;
+        //std::flush(*flog);
         cap = *optcap;
-        StringCbPrintfA(buf, 512, "NCSI_INTERFACE_ATTRIBUTES::SetCapability(%p = " FORMAT_GUID ", %d, %d -> %d, %d)", attributes, GUID_ARG(ifguid), family, origcap, cap, reason);
+        StringCbPrintfA(buf, 256, "NCSI_INTERFACE_ATTRIBUTES::SetCapability(%p = " FORMAT_GUID ", %d, %d -> %d, %d)", attributes, GUID_ARG(ifguid), family, origcap, cap, reason);
     }
     else {
-        StringCbPrintfA(buf, 512, "NCSI_INTERFACE_ATTRIBUTES::SetCapability(%p = " FORMAT_GUID ", %d, %d, %d)", attributes, GUID_ARG(ifguid), family, cap, reason);
+        //*flog << "Keep orig cap" << std::endl;
+        //std::flush(*flog);
+        StringCbPrintfA(buf, 256, "NCSI_INTERFACE_ATTRIBUTES::SetCapability(%p = " FORMAT_GUID ", %d, %d, %d)", attributes, GUID_ARG(ifguid), family, cap, reason);
     }
     OutputDebugStringA(buf);
+    //*flog << buf << std::endl;
+    //std::flush(*flog);
     realSetCapability(attributes, family, cap, reason);
 }
 
 extern "C" void NCSIOverrideAttach(HMODULE hDll) {
+    //__debugbreak();
+    //flog = new std::wofstream{ L"D:\\ncsioverride.log", std::ios_base::out | std::ios_base::trunc };
     auto optSetCapability = GetSymbolAddress(hDll, NCSI_INTERFACE_ATTRIBUTES_SetCapability);
     if (!optSetCapability) return;
     realSetCapability = reinterpret_cast<decltype(realSetCapability)>(optSetCapability.value());
@@ -148,8 +174,13 @@ extern "C" void NCSIOverrideAttach(HMODULE hDll) {
         OutputDebugStringA("NCSI_INTERFACE_ATTRIBUTES::SetCapability prolog check failed.");
         return;
     }
+    //*flog << L"before detour, realSetCapability:" << std::hex << realSetCapability << std::dec << std::endl;
+    //std::flush(*flog);
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     DetourAttach(reinterpret_cast<void**>(&realSetCapability), reinterpret_cast<void*>(MySetCapability));
     DetourTransactionCommit();
+    //*flog << L"after detour, realSetCapability:" << std::hex << realSetCapability << ", MySetCapability:" << reinterpret_cast<uintptr_t>(MySetCapability) << std::dec << std::endl;
+    //std::flush(*flog);
+    
 }

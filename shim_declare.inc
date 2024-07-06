@@ -1,2 +1,2 @@
 declare ServiceMain
-declare SvchostPushServiceGlobals
+declare SvchostPushServiceGlobalsEx
